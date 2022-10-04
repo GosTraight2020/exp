@@ -34,7 +34,7 @@ def plot_sample_images(sample_X=None, epoch=None, tag=None, size=None, dir=None)
     fig, axes = plt.subplots(10, 10, figsize=(50, 50))
     for i in range(10):
         for j in range(10):
-            axes[i][j].imshow(sample_X[i*10+j], cmap='gray')
+            axes[i][j].imshow(sample_X[i*10+j])
             axes[i][j].axis('off')
     plt.tight_layout()
 
