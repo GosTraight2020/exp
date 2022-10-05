@@ -11,16 +11,16 @@ import os
 tf.enable_eager_execution()
 tf.executing_eagerly()
 
-(X_train, y_train), (X_test, y_test) = cifar10.load_data()
+(X_train, y_train), (X_test, y_test) = mnist.load_data()
 
-nc = 3
+nc = 1
 nz = 100
 ngf = 64
 ndf = 64
 n_extra_layers = 0
 Diters = 5
 
-image_size = 32
+image_size = 28
 batch_size = 64
 learning_rate_D = 1e-4
 learning_rate_G = 1e-4
@@ -35,13 +35,19 @@ dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 n_extra_layers = n_extra_layers,
                 Diters = Diters,
                 image_size = image_size)
-def normal_func(X, y):
-     X = X.reshape(-1, 32*32*3)
+
+# print("[DEBUG] The model of generator")
+# dcgan.generator.summary()
+# print("[DEBUG] The model of discriminator")
+# dcgan.discriminator.summary()
+
+def normal_func(X, y, image_size, nc):
+     X = X.reshape(-1, image_size*image_size*nc)
      X = X.astype(np.float32) /255.0
      y = y.astype(np.float32) 
      return X, y
 
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=128, epoch_num=100, normal_func=normal_func)
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=128, normal_func=normal_func, image_size=image_size, nc=nc)
 
 def train_generator(x, y, z, eps, dcgan):
 
@@ -72,15 +78,14 @@ def train_discriminator(x, y, z, eps, dcgan):
 
 
 epoch_num = 100
-pic_dir = '/Test/reconstruct/pic'
-chart_dir = '/Test/reconstruct/chart'
+pic_dir = '/Test/reconstruct/pic/conv_mnist'
+chart_dir = '/Test/reconstruct/chart/conv_mnist'
 D_losses = []
 G_losses = []
 
-for epoch in tqdm(range(epoch_num+1)):
+for epoch in range(epoch_num):
     for((z, y), (x, eps)) in dataset:
-        fake_x, loss_G= train_generator(x, y, z, eps, dcgan)
-        
+        fake_x, loss_G= train_generator(x, y, z, eps, dcgan)        
         for i in range(5):
             loss_D= train_discriminator(x, y, z, eps, dcgan)
 
@@ -90,9 +95,9 @@ for epoch in tqdm(range(epoch_num+1)):
     G_losses.append(loss_G)
     D_losses.append(loss_D)
 
-    if epoch % 10 == 0:
+    if epoch % 5 == 0:
         print(fake_x)
-        plot_sample_images(fake_x, epoch=epoch, tag='Tune', size=(-1, 32, 32, 3), dir=pic_dir)
+        plot_sample_images(fake_x, epoch=epoch, tag='Tune', size=(-1, image_size, image_size, nc), dir=pic_dir)
 
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)

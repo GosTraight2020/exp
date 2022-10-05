@@ -117,14 +117,21 @@ class DCMGAN:
         self.n_extra_layers = n_extra_layers
         self.Diters = Diters
         self.image_size = image_size
-        self.generator = self.build_generator(self.image_size, self.nz, self.nc, self.ngf, self.n_extra_layers)
-        self.discriminator = self.build_discriminator(self.image_size, self.nz, self.nc, self.ndf, self.n_extra_layers)
         
         # 打印模型信息
         print("[INFO] Creating Model:\n \
                 learning_rate_G is : {}, \n \
                 learning_rate_D is : {}, \n \
-                batch_size is : {}".format(self.learning_rate_G, self.learning_rate_D, self.batch_size))
+                batch_size is : {}, \n \
+                nc is : {}, \n \
+                nz is : {}, \n \
+                ngf is : {}, \n \
+                ndf is : {}, \n \
+                n_extra_layers is : {}, \n \
+                image_size is : {}".format(self.learning_rate_G, self.learning_rate_D, self.batch_size, self.nc, self.nz, self.ngf, self.ndf, self.n_extra_layers, self.image_size))
+
+        self.generator = self.build_generator(self.image_size, self.nz, self.nc, self.ngf, self.n_extra_layers)
+        self.discriminator = self.build_discriminator(self.image_size, self.nz, self.nc, self.ndf, self.n_extra_layers)
         
     def build_generator(self, isize, nz, nc, ngf, n_extra_layers=0):
         print('[INFO] Constructing generator model...')
@@ -133,15 +140,15 @@ class DCMGAN:
         gamma_init = RandomNormal(1., 0.02)
         cngf= ngf//2
         tisize = isize
-        while tisize > 5:
+        while tisize > 7:
             cngf = cngf * 2
+            print("[DEBUG] The size of tisize: {}".format(tisize))
             assert tisize%2==0
             tisize = tisize // 2
         _ = inputs = Input(shape=(nz,))
         _ = Reshape((1,1, nz))(_)
         _ = Conv2DTranspose(filters=cngf, kernel_size=tisize, strides=1, use_bias=False,
-                            kernel_initializer = conv_init, 
-                            name = 'initial.{0}-{1}.convt'.format(nz, cngf))(_)
+                            kernel_initializer = conv_init, name = 'initial.{0}-{1}.convt'.format(nz, cngf))(_)
         _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5,
                                 name = 'initial.{0}.batchnorm'.format(cngf))(_, training=1)
         _ = Activation("relu", name = 'initial.{0}.relu'.format(cngf))(_)
@@ -186,7 +193,7 @@ class DCMGAN:
                             ) (_)
         _ = LeakyReLU(alpha=0.2, name = 'initial.relu.{0}'.format(ndf))(_)
         csize, cndf = isize// 2, ndf
-        while csize > 5:
+        while csize > 7:
             assert csize%2==0
             in_feat = cndf
             out_feat = cndf*2
