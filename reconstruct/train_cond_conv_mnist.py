@@ -110,6 +110,7 @@ def generate_conditional_sample(generator):
         for j in range(10):
             y.append(i)
     y = np.array(y, dtype=np.float32)
+    y = to_categorical(y)
     samples = generator.predict([z, y])
     return samples
 
