@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Input, Dense, Activation, BatchNormalization, Reshape, UpSampling2D, Conv2D, MaxPooling2D
-from tensorflow.keras.layers import Flatten, Conv2DTranspose, LeakyReLU
+from tensorflow.keras.layers import Flatten, Conv2DTranspose, LeakyReLU, Concatenate,Embedding
 from tensorflow.keras.initializers import RandomNormal
 class MGAN:
     def __init__(self,
@@ -103,7 +103,9 @@ class DCMGAN:
                  ndf = None,
                  n_extra_layers = None,
                  Diters = None,
-                 image_size = None):
+                 image_size = None,
+                 dataset=None,
+                 condtional=False):
 
         self.learning_rate_G = learning_rate_G
         self.learning_rate_D = learning_rate_D
@@ -117,6 +119,13 @@ class DCMGAN:
         self.n_extra_layers = n_extra_layers
         self.Diters = Diters
         self.image_size = image_size
+        if dataset is 'mnist':
+            self.para = 7
+        elif dataset is 'cifar10':
+            self.para = 5
+        else:
+            pass
+        self.condtional = condtional
         
         # 打印模型信息
         print("[INFO] Creating Model:\n \
@@ -140,13 +149,19 @@ class DCMGAN:
         gamma_init = RandomNormal(1., 0.02)
         cngf= ngf//2
         tisize = isize
-        while tisize > 7:
+        while tisize > self.para:
             cngf = cngf * 2
             print("[DEBUG] The size of tisize: {}".format(tisize))
             assert tisize%2==0
             tisize = tisize // 2
-        _ = inputs = Input(shape=(nz,))
-        _ = Reshape((1,1, nz))(_)
+        if self.condtional:
+            input1 = Input(shape = (1, nz))
+            input2 = Input(shape = (1, 10))
+            _ = Concatenate(axis=-1)([input1, input2])
+            _ = Reshape((1,1, nz+10))(_)
+        else:
+            _ = inputs = Input(shape=(nz,))
+            _ = Reshape((1,1, nz))(_)
         _ = Conv2DTranspose(filters=cngf, kernel_size=tisize, strides=1, use_bias=False,
                             kernel_initializer = conv_init, name = 'initial.{0}-{1}.convt'.format(nz, cngf))(_)
         _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5,
@@ -174,7 +189,11 @@ class DCMGAN:
                             )(_)
         _ = Activation("tanh", name = 'final.{0}.tanh'.format(nc))(_)
         outputs = Reshape((nc*isize*isize,))(_)
-        return Model(inputs=inputs, outputs=outputs)
+
+        if self.condtional:
+            return Model(inputs=[input1, input2], outputs=outputs)
+        else:
+            return Model(inputs=inputs, outputs=outputs)
 
 
     def build_discriminator(self, isize, nz, nc, ndf, n_extra_layers=0):
@@ -193,7 +212,7 @@ class DCMGAN:
                             ) (_)
         _ = LeakyReLU(alpha=0.2, name = 'initial.relu.{0}'.format(ndf))(_)
         csize, cndf = isize// 2, ndf
-        while csize > 7:
+        while csize > self.para:
             assert csize%2==0
             in_feat = cndf
             out_feat = cndf*2

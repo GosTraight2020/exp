@@ -21,7 +21,7 @@ n_extra_layers = 0
 Diters = 5
 
 image_size = 28
-batch_size = 64
+batch_size = 256
 learning_rate_D = 1e-4
 learning_rate_G = 1e-4
 
@@ -70,11 +70,16 @@ def train_discriminator(x, y, z, eps, dcgan):
         grad_pen = 10* tf.reduce_mean(tf.nn.relu(grad_norm-1.))
 
         loss_D = tf.reduce_mean(dcgan.discriminator(fake_x)) - tf.reduce_mean(dcgan.discriminator(x)) + grad_pen
-        gradient_d = t.gradient(loss_D, dcgan.discriminator.trainable_variables)
+       
+        # MSE LOSS
+        mse_loss = tf.reduce_sum(tf.square(tf.subtract(x, fake_x)))/28*28
+        total_loss  = mse_loss + loss_D
+        gradient_d = t.gradient(total_loss, dcgan.discriminator.trainable_variables)
+        # gradient_d = t.gradient(loss_D, dcgan.discriminator.trainable_variables)
 
     dcgan.optimizer_D.apply_gradients(zip(gradient_d, dcgan.discriminator.trainable_variables))
 
-    return loss_D
+    return loss_D, mse_loss
 
 
 epoch_num = 100
@@ -84,12 +89,15 @@ D_losses = []
 G_losses = []
 
 for epoch in range(epoch_num):
+    num = 0
     for((z, y), (x, eps)) in dataset:
         fake_x, loss_G= train_generator(x, y, z, eps, dcgan)        
         for i in range(5):
-            loss_D= train_discriminator(x, y, z, eps, dcgan)
-
-        print("[INFO] epoch: {}, G_loss : {}, D_loss: {}".format(epoch, loss_G, loss_D))
+            loss_D, mse_loss = train_discriminator(x, y, z, eps, dcgan)
+        num += 1
+        print(len(X_train))
+        # print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}".format(epoch, num, len(X_train)/batch_size,  loss_G, loss_D))
+        print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}, mse_loss: {}".format(epoch, num, len(X_train)//batch_size, loss_G, loss_D, mse_loss))
 
         
     G_losses.append(loss_G)
@@ -102,7 +110,7 @@ for epoch in range(epoch_num):
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)
         plt.legend()
-        plt.savefig(os.path.join(chart_dir, 'loss.png'))
+        plt.savefig(os.path.join(chart_dir, 'standard_loss.png'))
 
     
 
