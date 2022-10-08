@@ -17,16 +17,16 @@ import os
 tf.enable_eager_execution()
 tf.executing_eagerly()
 
-(X_train, y_train), (X_test, y_test) = mnist.load_data()
+(X_train, y_train), (X_test, y_test) = cifar10.load_data()
 
-nc = 1
+nc = 3
 nz = 100
 ngf = 64
 ndf = 64
 n_extra_layers = 0
 Diters = 5
 
-image_size = 28
+image_size = 32
 batch_size = 256
 learning_rate_D = 1e-4
 learning_rate_G = 1e-4
@@ -41,7 +41,7 @@ dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 n_extra_layers = n_extra_layers,
                 Diters = Diters,
                 image_size = image_size,
-                dataset='mnist',
+                dataset='cifar10',
                 condtional=True)
 
 print('[DEBUG] The address of  DCGAN: {}'.format(dcgan))
@@ -59,7 +59,7 @@ def normal_func(X, y, image_size, nc):
      y = y.astype(np.float32) 
      return X, y
 
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=128, normal_func=normal_func, image_size=image_size, nc=nc)
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 def train_generator(x, y, z, eps, dcgan, siamese_model):
 
@@ -70,24 +70,26 @@ def train_generator(x, y, z, eps, dcgan, siamese_model):
         # =========================standard=======================================
         # gradient_g = t.gradient(loss_G, dcgan.generator.trainable_variables)
         # =========================MSE LOSS=======================================
-        mse_loss = mean_squared_error(x, fake_x)
-        mse_loss = lrelu(mse_loss, leak=0.1, bias=0.1)
-        mse_loss = tf.reduce_mean(mse_loss)
+        # mse_loss = mean_squared_error(x, fake_x)
+        # mse_loss = lrelu(mse_loss, leak=0.1, bias=0.1)
+        # mse_loss = tf.reduce_mean(mse_loss)
         # =========================siamese LOSS====================================
-        # v1 = siamese_model.predict(fake_x)
-        # v2 = siamese_model.predict(x)
-        # test_distance = Lambda(euclidean_distance,
-        #                             output_shape=eucl_dist_output_shape)([v1, v2])
+        v1 = siamese_model(tf.reshape(fake_x,(-1, 32, 32, 3)))
+        v2 = siamese_model(tf.reshape(x,(-1, 32, 32, 3)))
+        test_distance = Lambda(euclidean_distance,
+                                    output_shape=eucl_dist_output_shape)([v1, v2])
+        # siamese_loss = lrelu(test_distance, leak=0.1, bias=0.1)
+        
 
-        # siamese_loss = tf.reduce_mean(test_distance)
+        siamese_loss = tf.reduce_mean(test_distance)
 
-        total_loss  = 10*mse_loss + loss_G
+        total_loss  = siamese_loss + loss_G
 
         gradient_g = t.gradient(total_loss, dcgan.generator.trainable_variables)
 
     dcgan.optimizer_G.apply_gradients(zip(gradient_g, dcgan.generator.trainable_variables))
     
-    axu_loss = total_loss
+    axu_loss = siamese_loss
 
     return fake_x[:100], loss_G, axu_loss
 
@@ -122,11 +124,11 @@ def generate_conditional_sample(generator):
     return samples
 
 epoch_num = 100
-pic_dir = '/Test/reconstruct/pic/conv_mnist'
-chart_dir = '/Test/reconstruct/chart/conv_mnist'
+pic_dir = '/Test/reconstruct/pic/conv_cifar10'
+chart_dir = '/Test/reconstruct/chart/conv_cifar10'
 D_losses = []
 G_losses = []
-siamese_model = load_model("/Test/reconstruct/checkpoint/siamese_40.h5")
+siamese_model = load_model("/Test/reconstruct/checkpoint/siamese_cifar_100.h5")
 
 
 
@@ -139,19 +141,19 @@ for epoch in range(epoch_num):
             loss_D = train_discriminator(x, y, z, eps, dcgan)
         num += 1
         # print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}".format(epoch, num, len(X_train)/batch_size,  loss_G, loss_D))
-        print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}, mse_loss: {}".format(epoch, num, len(X_train)//128, loss_G, loss_D, mse_loss))
+        print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}, mse_loss: {}".format(epoch, num, len(X_train)//batch_size, loss_G, loss_D, mse_loss))
 
     G_losses.append(loss_G)
     D_losses.append(loss_D)
 
     if epoch % 5 == 0:
         cond_samples = generate_conditional_sample(dcgan.generator)
-        plot_sample_images(cond_samples, epoch=epoch, tag='lrelu_MSE', size=(-1, image_size, image_size, nc), dir=pic_dir)
+        plot_sample_images(cond_samples, epoch=epoch, tag='lrelu_Siamese', size=(-1, image_size, image_size, nc), dir=pic_dir)
 
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)
         plt.legend()
-        plt.savefig(os.path.join(chart_dir, 'conditional_lrelu_MSE_loss.png'))
+        plt.savefig(os.path.join(chart_dir, 'conditional_lrelu_Siamese_loss.png'))
 
     
 

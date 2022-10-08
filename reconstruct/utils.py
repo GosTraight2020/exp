@@ -71,7 +71,7 @@ def compute_accuracy(y_true, y_pred):
     return np.mean(pred == y_true)
     
 
-def generate_siamese_inputs(x, y, batch_size=None, validation=False):
+def generate_siamese_inputs(x, y, batch_size=None, validation=False, shape=None):
     def create_pairs(x, digit_indices):
         """ digit_indices 是数据集按类别分类的数字下标"""
         one = []
@@ -91,13 +91,13 @@ def generate_siamese_inputs(x, y, batch_size=None, validation=False):
                 labels.append(1)
                 labels.append(0)
 
-        one = np.array(one).reshape(-1, 784)
-        two = np.array(two).reshape(-1, 784)
+        one = np.array(one).reshape(shape)
+        two = np.array(two).reshape(shape)
         labels = np.array(labels).reshape(-1, 1).astype(np.float32)
         return one, two, labels
 
 
-    x = x.reshape(-1, 784).astype(np.float32) / 255.0
+    x = x.reshape(shape).astype(np.float32) / 255.0
     num_classes = np.unique(y).shape[0]
     digit_indices = [np.where(y == d)[0] for d in range(0, num_classes)]
     one, two, labels = create_pairs(x=x, digit_indices=digit_indices)
@@ -119,3 +119,19 @@ def generate_siamese_inputs(x, y, batch_size=None, validation=False):
         dataset = dataset.batch(batch_size)
     return dataset, labels.shape[0]
     
+
+def sigmoid(x):
+    return 1. / (1 + tf.exp(-(x+2.5)))
+
+def lrelu(x, leak, bias, g_loss=None, name="lrelu"):
+    if g_loss is not None:
+        bias = sigmoid(g_loss)
+    x = x - bias
+    with tf.variable_scope(name):
+         f1 = 0.5 * (1 + leak)
+         f2 = 0.5 * (1 - leak)
+         return f1 * x + f2 * abs(x)
+
+
+def debug(num, string):
+    print('[DEBUG] Point{}: {}'.format(num, string))
