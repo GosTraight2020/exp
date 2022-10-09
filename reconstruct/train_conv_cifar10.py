@@ -34,14 +34,16 @@ dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 ndf = ndf,
                 n_extra_layers = n_extra_layers,
                 Diters = Diters,
-                image_size = image_size)
-def normal_func(X, y):
-     X = X.reshape(-1, 32*32*3)
+                image_size = image_size,
+                dataset='cifar10',
+                condtional=False)
+def normal_func(X, y, image_size, nc):
+     X = X.reshape(-1, image_size*image_size*nc)
      X = X.astype(np.float32) /255.0
      y = y.astype(np.float32) 
      return X, y
 
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=128, epoch_num=100, normal_func=normal_func)
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 def train_generator(x, y, z, eps, dcgan):
 
@@ -70,34 +72,47 @@ def train_discriminator(x, y, z, eps, dcgan):
 
     return loss_D
 
+def generate_samples(cdgan):
+    z = tf.random.uniform(shape=(100, 100), minval=-1., maxval=1., dtype=tf.float32)
+    return dcgan.generator.predict(z)
 
-epoch_num = 100
-pic_dir = './/pic/conv-cifar10'
-chart_dir = './chart/conv-cifar10'
+    
+    
+    
+epoch_num = 200
+pic_dir = './pic/conv_cifar10'
+chart_dir = './chart/conv_cifar10'
 D_losses = []
 G_losses = []
 
 for epoch in range(epoch_num):
+    num = 0
     for((z, y), (x, eps)) in dataset:
         fake_x, loss_G= train_generator(x, y, z, eps, dcgan)
         
         for i in range(5):
             loss_D= train_discriminator(x, y, z, eps, dcgan)
+        num+=1
 
-        print("[INFO] epoch: {}, G_loss : {}, D_loss: {}".format(epoch, loss_G, loss_D))
+        print("[INFO] epoch: {}, {}/{},  G_loss : {}, D_loss: {}".format(epoch, num, len(X_train)//batch_size, loss_G, loss_D))
 
         
     G_losses.append(loss_G)
     D_losses.append(loss_D)
 
     if epoch % 5 == 0:
-        print(fake_x)
-        plot_sample_images(fake_x, epoch=epoch, tag='Tune', size=(-1, 32, 32, 3), dir=pic_dir)
+        samples = generate_samples(dcgan)
+        plot_sample_images(samples, epoch=epoch, tag='Tune', size=(-1, 32, 32, 3), dir=pic_dir)
 
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)
         plt.legend()
-        plt.savefig(os.path.join(chart_dir, 'loss.png'))
+        plt.savefig(os.path.join(chart_dir, 'standard_loss.png'))
+
+# samples = generate_samples(dcgan)
+# plot_sample_images(samples, epoch=-1, tag='Tune', size=(-1, 32, 32, 3), dir=pic_dir)
+        
+dcgan.generator.save("./model/standard_cifar10_generator.h5")
 
     
 
