@@ -101,15 +101,6 @@ def generate_siamese_inputs(x, y, batch_size=None, validation=False, shape=None)
     num_classes = np.unique(y).shape[0]
     digit_indices = [np.where(y == d)[0] for d in range(0, num_classes)]
     one, two, labels = create_pairs(x=x, digit_indices=digit_indices)
-    # print(one.shape)
-    # print(two.shape)
-    # print(labels.shape)
-    # a = one[0].reshape(28, 28)
-    # b = two[0].reshape(28, 28)
-    # plt.imshow(a)
-    # plt.savefig("pairs1.png")
-    # plt.imshow(b)
-    # plt.savefig("pairs2.png")
 
     dataset = tf.data.Dataset.from_tensor_slices(((one, two), labels))
     dataset = dataset.shuffle(buffer_size=20000, seed=2022)
@@ -135,3 +126,10 @@ def lrelu(x, leak, bias, g_loss=None, name="lrelu"):
 
 def debug(num, string):
     print('[DEBUG] Point{}: {}'.format(num, string))
+
+
+def cosin_distance(y_true, y_pred):
+    y_true_norm = K.l2_normalize(y_true, axis=1)
+    y_pred_norm = K.l2_normalize(y_pred, axis=1)
+    cos_distance = K.batch_dot(y_true_norm, y_pred_norm, axes=1)
+    return cos_distance

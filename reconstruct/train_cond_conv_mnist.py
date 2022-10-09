@@ -2,66 +2,20 @@ from GAN import DCMGAN
 from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Lambda
 from tensorflow.keras.datasets import mnist, cifar10
-from utils import generate_GAN_inputs, plot_sample_images, lrelu
-from utils import eucl_dist_output_shape, euclidean_distance, contrastive_loss
+from tensorflow.keras.losses import categorical_crossentropy
+from utils import generate_GAN_inputs, plot_sample_images, lrelu, debug
+from utils import eucl_dist_output_shape, euclidean_distance, contrastive_loss, cosin_distance
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.losses import mean_squared_error
-
+from tensorflow.keras import backend as K
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import os 
 
-#开启动态图模式
-tf.enable_eager_execution()
-tf.executing_eagerly()
 
-(X_train, y_train), (X_test, y_test) = mnist.load_data()
-
-nc = 1
-nz = 100
-ngf = 64
-ndf = 64
-n_extra_layers = 0
-Diters = 5
-
-image_size = 28
-batch_size = 256
-learning_rate_D = 1e-4
-learning_rate_G = 1e-4
-
-dcgan = DCMGAN(learning_rate_G=learning_rate_G,
-                learning_rate_D=learning_rate_D,
-                batch_size=batch_size,
-                nc = nc,
-                nz = nz,
-                ngf = ngf,
-                ndf = ndf,
-                n_extra_layers = n_extra_layers,
-                Diters = Diters,
-                image_size = image_size,
-                dataset='mnist',
-                condtional=True)
-
-print('[DEBUG] The address of  DCGAN: {}'.format(dcgan))
-print('[DEBUG] The address of  generator: {}'.format(dcgan.generator))
-
-# print("[DEBUG] The model of generator")
-# dcgan.generator.summary()
-# print("[DEBUG] The model of discriminator")
-# dcgan.discriminator.summary()
-
-def normal_func(X, y, image_size, nc):
-     X = X.reshape(-1, image_size*image_size*nc)
-     X = X.astype(np.float32) /255.0
-     y = to_categorical(y)
-     y = y.astype(np.float32) 
-     return X, y
-
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
-
-def train_generator(x, y, z, eps, dcgan, siamese_model, loss=None):
+def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None):
 
     with tf.GradientTape(persistent=True) as t:
         fake_x = dcgan.generator([z, y])
@@ -69,11 +23,11 @@ def train_generator(x, y, z, eps, dcgan, siamese_model, loss=None):
 
         # =========================standard=======================================
         if loss == 'origin':
-            axu_loss = 0
+            aux_loss = 0
         # =========================MSE LOSS=======================================
         elif loss == 'mse':
-            axu_loss = mean_squared_error(x, fake_x)
-            axu_loss = 10*tf.reduce_mean(axu_loss)
+            aux_loss = mean_squared_error(x, fake_x)
+            aux_loss = 10*tf.reduce_mean(axu_loss)
         # =========================siamese LOSS====================================
         elif loss == 'siamese':
             v1 = siamese_model(fake_x)
@@ -81,18 +35,25 @@ def train_generator(x, y, z, eps, dcgan, siamese_model, loss=None):
             test_distance = Lambda(euclidean_distance,
                                     output_shape=eucl_dist_output_shape)([v1, v2])
 
-            axu_loss = tf.reduce_mean(test_distance)
+            aux_loss = tf.reduce_mean(test_distance)
+        elif loss == 'categorical_crossentropy':
+            preds = aux_model(fake_x)
+            aux_loss = K.categorical_crossentropy(y, preds)
+            aux_loss = tf.reduce_mean(aux_loss)
+        elif loss == 'cosin_distance':
+            aux_loss = cosin_distance(x, fake_x)
+            aux_loss = -tf.reduce_mean(aux_loss)
         else:
             raise ValueError("[Error] Wrong value of loss!")
 
-        total_loss  = axu_loss + loss_G
+        total_loss  = aux_loss + loss_G
 
         gradient_g = t.gradient(total_loss, dcgan.generator.trainable_variables)
 
     dcgan.optimizer_G.apply_gradients(zip(gradient_g, dcgan.generator.trainable_variables))
     
 
-    return fake_x[:100], loss_G, axu_loss, loss
+    return fake_x[:100], loss_G, aux_loss, loss
 
 def train_discriminator(x, y, z, eps, dcgan):
     with tf.GradientTape(persistent=True) as t:
@@ -123,14 +84,69 @@ def generate_conditional_sample(generator):
     samples = generator.predict([z, y])
     return samples
 
+
+
+#开启动态图模式
+tf.enable_eager_execution()
+tf.executing_eagerly()
+
+(X_train, y_train), (X_test, y_test) = mnist.load_data()
+
+nc = 1
+nz = 100
+ngf = 64
+ndf = 64
+n_extra_layers = 0
+Diters = 5
+
+image_size = 28
+batch_size = 256
+learning_rate_D = 1e-4
+learning_rate_G = 1e-4
+
 epoch_num = 100
-loss = 'mse'
+loss = 'cosin_distance'
 pic_dir = './pic/conv_mnist'
 chart_dir = './chart/conv_mnist'
 D_losses = []
 G_losses = []
-siamese_model = load_model("./checkpoint/siamese_40.h5")
 
+if loss == 'siamese':
+    aux_model = load_model("./checkpoint/siamese_40.h5")
+elif loss == 'categorical_crossentropy':
+    aux_model = load_model("./model/mnist_classifer.h5")
+else:
+    aux_model = None
+
+
+dcgan = DCMGAN(learning_rate_G=learning_rate_G,
+                learning_rate_D=learning_rate_D,
+                batch_size=batch_size,
+                nc = nc,
+                nz = nz,
+                ngf = ngf,
+                ndf = ndf,
+                n_extra_layers = n_extra_layers,
+                Diters = Diters,
+                image_size = image_size,
+                dataset='mnist',
+                condtional=True)
+
+print('[DEBUG] The address of  DCGAN: {}'.format(dcgan))
+print('[DEBUG] The address of  generator: {}'.format(dcgan.generator))
+# print("[DEBUG] The model of generator")
+# dcgan.generator.summary()
+# print("[DEBUG] The model of discriminator")
+# dcgan.discriminator.summary()
+
+def normal_func(X, y, image_size, nc):
+     X = X.reshape(-1, image_size*image_size*nc)
+     X = X.astype(np.float32) /255.0
+     y = to_categorical(y)
+     y = y.astype(np.float32) 
+     return X, y
+
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 
 for epoch in range(epoch_num):
@@ -138,7 +154,7 @@ for epoch in range(epoch_num):
     G_temp_loss = []
     D_temp_loss = []
     for((z, y), (x, eps)) in dataset:
-        fake_x, loss_G, axu_loss, loss= train_generator(x, y, z, eps, dcgan, siamese_model, loss)     
+        fake_x, loss_G, axu_loss, loss= train_generator(x, y, z, eps, dcgan, loss, aux_model)     
         for i in range(5):
             loss_D = train_discriminator(x, y, z, eps, dcgan)
         num += 1

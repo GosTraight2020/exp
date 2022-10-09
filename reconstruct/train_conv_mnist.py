@@ -81,7 +81,7 @@ def train_discriminator(x, y, z, eps, dcgan):
     return loss_D
 
 
-epoch_num = 1
+epoch_num = 100
 pic_dir = './pic/conv_mnist'
 chart_dir = './chart/conv_mnist'
 D_losses = []
