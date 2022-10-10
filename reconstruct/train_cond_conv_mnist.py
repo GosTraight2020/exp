@@ -15,33 +15,39 @@ import matplotlib.pyplot as plt
 import os 
 
 
-def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None):
-
+def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None, template_samples=None):
+ 
+    # 如果参数templates_samples不为空，说明需要按照输入的模版样本来引导样本生成
+    if template_samples is not None:
+        templates = x
+        y_templates = np.argmax(y, axis=1)
+        for i in range(10):
+            templates[y_templates==i] = template_samples[i]
+    else:
+        templates = x
+            
+            
     with tf.GradientTape(persistent=True) as t:
         fake_x = dcgan.generator([z, y])
         loss_G = -tf.reduce_mean(dcgan.discriminator(fake_x)) 
-
-        # =========================standard=======================================
+        
         if loss == 'origin':
             aux_loss = 0
-        # =========================MSE LOSS=======================================
         elif loss == 'mse':
-            aux_loss = mean_squared_error(x, fake_x)
+            aux_loss = mean_squared_error(templates, fake_x)
             aux_loss = 10*tf.reduce_mean(axu_loss)
-        # =========================siamese LOSS====================================
         elif loss == 'siamese':
             v1 = siamese_model(fake_x)
-            v2 = siamese_model(x)
+            v2 = siamese_model(templates)
             test_distance = Lambda(euclidean_distance,
                                     output_shape=eucl_dist_output_shape)([v1, v2])
-
             aux_loss = tf.reduce_mean(test_distance)
         elif loss == 'categorical_crossentropy':
             preds = aux_model(fake_x)
             aux_loss = K.categorical_crossentropy(y, preds)
             aux_loss = tf.reduce_mean(aux_loss)
         elif loss == 'cosin_distance':
-            aux_loss = cosin_distance(x, fake_x)
+            aux_loss = cosin_distance(templates, fake_x)
             aux_loss = -tf.reduce_mean(aux_loss)
         else:
             raise ValueError("[Error] Wrong value of loss!")
@@ -84,6 +90,22 @@ def generate_conditional_sample(generator):
     samples = generator.predict([z, y])
     return samples
 
+def generate_templates(X_train, y_train):
+    """generate template samples from X_train, one for each category
+
+    Args:
+        X_train (nD_array): training samples
+        y_train (nD_array): training labels
+
+    Returns:
+        1D_array: one templates sample for each category
+    """
+    templates = []
+    for i in range(9):
+        template = X_train[y_train == i][0]
+        templates.append(template)
+    templates = np.array(templates)
+    return templates
 
 
 #开启动态图模式
@@ -106,10 +128,11 @@ learning_rate_G = 1e-4
 
 epoch_num = 100
 loss = 'cosin_distance'
+enable_template = True
+
 pic_dir = './pic/conv_mnist'
 chart_dir = './chart/conv_mnist'
-D_losses = []
-G_losses = []
+
 
 if loss == 'siamese':
     aux_model = load_model("./checkpoint/siamese_40.h5")
@@ -118,6 +141,19 @@ elif loss == 'categorical_crossentropy':
 else:
     aux_model = None
 
+if enable_template = True:
+    template_samples = generate_templates(X_train, y_train)
+else:
+    template_samples = None
+
+def normal_func(X, y, image_size, nc):
+     X = X.reshape(-1, image_size*image_size*nc)
+     X = X.astype(np.float32) /255.0
+     y = to_categorical(y)
+     y = y.astype(np.float32) 
+     return X, y
+
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 learning_rate_D=learning_rate_D,
@@ -132,29 +168,17 @@ dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 dataset='mnist',
                 condtional=True)
 
-print('[DEBUG] The address of  DCGAN: {}'.format(dcgan))
-print('[DEBUG] The address of  generator: {}'.format(dcgan.generator))
-# print("[DEBUG] The model of generator")
-# dcgan.generator.summary()
-# print("[DEBUG] The model of discriminator")
-# dcgan.discriminator.summary()
-
-def normal_func(X, y, image_size, nc):
-     X = X.reshape(-1, image_size*image_size*nc)
-     X = X.astype(np.float32) /255.0
-     y = to_categorical(y)
-     y = y.astype(np.float32) 
-     return X, y
-
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 
+
+D_losses = []
+G_losses = []
 for epoch in range(epoch_num):
     num = 0
     G_temp_loss = []
     D_temp_loss = []
     for((z, y), (x, eps)) in dataset:
-        fake_x, loss_G, axu_loss, loss= train_generator(x, y, z, eps, dcgan, loss, aux_model)     
+        fake_x, loss_G, axu_loss, loss= train_generator(x, y, z, eps, dcgan, loss, aux_model, template_samples)     
         for i in range(5):
             loss_D = train_discriminator(x, y, z, eps, dcgan)
         num += 1
@@ -172,10 +196,10 @@ for epoch in range(epoch_num):
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)
         plt.legend()
-        plt.savefig(os.path.join(chart_dir, 'conditional_{}_loss_batch_256.png'.format(loss)))
+        plt.savefig(os.path.join(chart_dir, 'conditional_{}_loss_batch_256_template{}.png'.format(loss, enable_template)))
 
     
-file1 = open("./data/mnist_{}.log".format(loss), 'w')
+file1 = open("./data/mnist_{}_template_{}.log".format(loss, enable_template), 'w')
 file1.write("G_loss: \n")
 file1.write(str(G_losses))
 file1.write('\n')
@@ -183,4 +207,4 @@ file1.write("D_loss:\n")
 file1.write(str(D_losses))
 file1.close()
 
-dcgan.generator.save("./model/mnist_{}.h5".format(loss))
+dcgan.generator.save("./model/mnist_{}_template_{}.h5".format(loss, enable_template))
