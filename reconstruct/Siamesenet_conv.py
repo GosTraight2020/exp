@@ -1,6 +1,6 @@
-from tensorflow.keras.datasets import cifar10
+from tensorflow.keras.datasets import cifar10, fashion_mnist
 from tensorflow.keras.optimizers import RMSprop
-from tensorflow.keras.layers import Conv2D, BatchNormalization, Concatenate, Input, MaxPooling2D, Dense, GlobalAveragePooling2D, Dropout, Flatten, Lambda
+from tensorflow.keras.layers import Reshape, Conv2D, BatchNormalization, Concatenate, Input, MaxPooling2D, Dense, GlobalAveragePooling2D, Dropout, Flatten, Lambda
 from tensorflow.keras.models import Model, load_model, Sequential
 from tensorflow.keras.callbacks import LearningRateScheduler, EarlyStopping, ModelCheckpoint
 from utils import compute_accuracy, eucl_dist_output_shape, euclidean_distance, contrastive_loss, generate_siamese_inputs, debug
@@ -115,16 +115,16 @@ class Siamese_Net:
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
         return loss
 
-(X_train, y_train), (X_test, y_test) = cifar10.load_data()
-X_train = X_train.astype('float32')
-X_test = X_test.astype('float32')
+(X_train, y_train), (X_test, y_test) = fashion_mnist.load_data()
+X_train = X_train.reshape(-1, 28, 28, 1).astype('float32')
+X_test = X_test.reshape(-1, 28, 28, 1).astype('float32')
 X_train /= 255
 X_test /= 255
-siamese_net = Siamese_Net(learning_rate = 1e-3, input_shape=(32, 32, 3))
+siamese_net = Siamese_Net(learning_rate = 1e-4, input_shape=(28, 28, 1))
 siamese_net.model.summary()
 
 batch_size = 128
-epoch_num = 100
+epoch_num = 40
 num_classes = np.unique(y_train).shape[0]
 digit_indices_train = [np.where(y_train == d)[0] for d in range(0, num_classes)]
 digit_indices_test = [np.where(y_test == d)[0] for d in range(0, num_classes)]
@@ -147,4 +147,4 @@ history = model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
           batch_size=128,
           epochs=epoch_num,
           validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y))
-siamese_net.model.save("/paper/reconstruct/checkpoint/siamese_cifar_100.h5")
+siamese_net.model.save("./checkpoint/siamese_fashion_mnist.h5")

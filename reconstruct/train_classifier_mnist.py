@@ -1,5 +1,6 @@
-from tensorflow.keras.datasets import mnist
+from tensorflow.keras.datasets import mnist, fashion_mnist
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Flatten, Conv2D, MaxPooling2D, Dropout, Input, Reshape
 import numpy as np 
@@ -23,7 +24,8 @@ _ = Dropout(0.25)(_)
 outputs = Dense(10, activation='softmax')(_)
 
 model = Model(inputs, outputs)
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
-history = model.fit(X_train, y_train, validation_split=0.2, epochs=10, batch_size=256, verbose=2)
+opt = Adam(5e-4)
+model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['acc'])
+history = model.fit(X_train, y_train, validation_split=0.2, epochs=50, batch_size=256, verbose=2)
 
-model.save('./model/mnist_classifer.h5')
+model.save('./model/fashion_mnist_classifer.h5')

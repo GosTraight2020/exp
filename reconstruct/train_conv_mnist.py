@@ -1,5 +1,5 @@
 from GAN import DCMGAN
-from tensorflow.keras.datasets import mnist, cifar10
+from tensorflow.keras.datasets import mnist, cifar10, fashion_mnist
 from utils import generate_GAN_inputs, plot_sample_images
 import tensorflow as tf
 import numpy as np
@@ -11,45 +11,9 @@ import os
 tf.enable_eager_execution()
 tf.executing_eagerly()
 
-(X_train, y_train), (X_test, y_test) = mnist.load_data()
 
-nc = 1
-nz = 100
-ngf = 64
-ndf = 64
-n_extra_layers = 0
-Diters = 5
 
-image_size = 28
-batch_size = 256
-learning_rate_D = 1e-4
-learning_rate_G = 1e-4
 
-dcgan = DCMGAN(learning_rate_G=learning_rate_G,
-                learning_rate_D=learning_rate_D,
-                batch_size=batch_size,
-                nc = nc,
-                nz = nz,
-                ngf = ngf,
-                ndf = ndf,
-                n_extra_layers = n_extra_layers,
-                Diters = Diters,
-                image_size = image_size,
-                dataset='mnist',
-                condtional=False)
-
-# print("[DEBUG] The model of generator")
-# dcgan.generator.summary()
-# print("[DEBUG] The model of discriminator")
-# dcgan.discriminator.summary()
-
-def normal_func(X, y, image_size, nc):
-     X = X.reshape(-1, image_size*image_size*nc)
-     X = X.astype(np.float32) /255.0
-     y = y.astype(np.float32) 
-     return X, y
-
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 def train_generator(x, y, z, eps, dcgan):
 
@@ -80,6 +44,46 @@ def train_discriminator(x, y, z, eps, dcgan):
 
     return loss_D
 
+def normal_func(X, y, image_size, nc):
+     X = X.reshape(-1, image_size*image_size*nc)
+     X = X.astype(np.float32) /255.0
+     y = y.astype(np.float32) 
+     return X, y
+ 
+
+nc = 1
+nz = 100
+ngf = 64
+ndf = 64
+n_extra_layers = 0
+Diters = 5
+
+image_size = 28
+batch_size = 256
+learning_rate_D = 1e-4
+learning_rate_G = 1e-4
+
+data_set = "fashion_mnist"
+
+if data_set == "mnist":
+    (X_train, y_train), (X_test, y_test) = mnist.load_data()
+elif data_set == "fashion_mnist":
+    (X_train, y_train), (X_test, y_test) = fashion_mnist.load_data()
+
+dcgan = DCMGAN(learning_rate_G=learning_rate_G,
+                learning_rate_D=learning_rate_D,
+                batch_size=batch_size,
+                nc = nc,
+                nz = nz,
+                ngf = ngf,
+                ndf = ndf,
+                n_extra_layers = n_extra_layers,
+                Diters = Diters,
+                image_size = image_size,
+                dataset='mnist',
+                condtional=False)
+
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
 
 epoch_num = 100
 pic_dir = './pic/conv_mnist'
@@ -97,7 +101,7 @@ for epoch in range(epoch_num):
             loss_D = train_discriminator(x, y, z, eps, dcgan)
         num += 1
         # print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}".format(epoch, num, len(X_train)/batch_size,  loss_G, loss_D))
-        print("[INFO] epoch: {}, {}/{}, G_loss : {}, D_loss: {}".format(epoch, num, len(X_train)//batch_size, loss_G, loss_D))
+        print("[INFO]Dataset:{} epoch: {}, {}/{}, G_loss : {}, D_loss: {}".format(data_set, epoch, num, len(X_train)//batch_size, loss_G, loss_D))
         G_temp_loss.append(loss_G)
         D_temp_loss.append(loss_D)
         
@@ -105,15 +109,15 @@ for epoch in range(epoch_num):
     D_losses.append(np.mean(D_temp_loss))
 
     if epoch % 10 == 0:
-        plot_sample_images(fake_x, epoch=epoch, tag='Standard', size=(-1, image_size, image_size, nc), dir=pic_dir)
+        plot_sample_images(fake_x, epoch=epoch, tag='{}_Standard'.format(data_set), size=(-1, image_size, image_size, nc), dir=pic_dir)
 
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)
         plt.legend()
-        plt.savefig(os.path.join(chart_dir, 'standard_loss_batch_256.png'))
+        plt.savefig(os.path.join(chart_dir, '{}_standard_loss_batch_256.png'.format(data_set)))
 
     
-file1 = open("./data/mnist_standard.log", 'w')
+file1 = open("./data/{}_standard.log".format(data_set), 'w')
 file1.write("G_loss: \n")
 file1.write(str(G_losses))
 file1.write('\n')
@@ -121,5 +125,5 @@ file1.write("D_loss:\n")
 file1.write(str(D_losses))
 file1.close()
 
-dcgan.generator.save("./model/mnist_standard.h5")
+dcgan.generator.save("./model/{}_standard.h5".format(data_set))
 

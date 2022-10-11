@@ -5,6 +5,8 @@ import os
 from tqdm import tqdm
 import random
 from tensorflow.keras import backend as K
+from skimage.metrics import structural_similarity as compare_ssim
+from sklearn.feature_selection import mutual_info_regression
 def generate_GAN_inputs(X, y, batch_size, normal_func, image_size, nc):
     """ 输入样本X和标签y 使用函数normal对他们进行规范化
         再根据参数epoch_num和batch_size来生成数据集
@@ -133,3 +135,16 @@ def cosin_distance(y_true, y_pred):
     y_pred_norm = K.l2_normalize(y_pred, axis=1)
     cos_distance = K.batch_dot(y_true_norm, y_pred_norm, axes=1)
     return cos_distance
+
+def compute_score(X_true, X_pred, label):
+    scores = []
+    for i in range(X_true.shape[0]):
+        if label == 'mutual_info_score':
+            score = mutual_info_regression(X_true[i], X_pred[i])
+        elif label == 'ssim_socre':
+            socre = compare_ssim(X_true[i], X_pred[i])
+        else:
+            raise ValueError("[ERROR] Wrong Value!")
+        scores.append(score)
+    scores = np.array(socres)  
+    return scores
