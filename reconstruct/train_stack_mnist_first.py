@@ -1,6 +1,7 @@
+
 import h5py
 import numpy as np
-from GAN import DCMGAN
+from GAN import DCMGAN, Second_Step_GAN
 from tensorflow.keras.models import load_model
 from tensorflow.keras.layers import Lambda
 from tensorflow.keras.datasets import mnist, cifar10,fashion_mnist
@@ -17,12 +18,15 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import os 
 
+# #开启动态图模式
+tf.enable_eager_execution()
+
+
 
 def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None, template_samples=None, data_set=None):
     # 如果参数template_samples不为空，说明需要按照输入的模版样本来引导样本生成
 
     templates = x
-            
     with tf.GradientTape(persistent=True) as t:
         fake_x = dcgan.generator([z, y])
         loss_G = -tf.reduce_mean(dcgan.discriminator(fake_x)) 
@@ -95,6 +99,7 @@ def generate_conditional_sample(generator):
     samples = generator.predict([z, y])
     return samples
 
+
 def generate_templates(X_train, y_train):
     """generate template samples from X_train, one for each category
 
@@ -116,21 +121,17 @@ def generate_templates(X_train, y_train):
 def normal_func(X, y, image_size, nc):
      X = X.reshape(-1, image_size*image_size*nc)
      X = X.astype(np.float32)
-     y = to_categorical(y)
-     y = y.astype(np.float32) 
+     y = y.reshape(-1, 14*14).astype(np.float32) 
      return X, y
+ 
 
 
-
-#开启动态图模式
-tf.enable_eager_execution()
-tf.executing_eagerly()
 
 data_set = "mnist"
 if data_set == "mnist":   
+    (X_train, _), (_, _) = fashion_mnist.load_data()
     hfile = h5py.File('./data/n_segments_20_compactnes_1_sigma_1.h5', 'r')
-    X_train = np.array(hfile['feature'])
-    y_train = np.array(hfile['label'])
+    y_train = np.array(hfile['feature'])
     hfile.close()
 elif data_set == "fashion_mnist":
     (X_train, y_train), (X_test, y_test) = fashion_mnist.load_data()
@@ -142,7 +143,7 @@ ndf = 64
 n_extra_layers = 0
 Diters = 5
 
-image_size = 14
+image_size = 28
 batch_size = 256
 learning_rate_D = 1e-4
 learning_rate_G = 1e-4
@@ -175,9 +176,9 @@ else:
     template_samples = None
 
 
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc, noise_shape=196)
 
-dcgan = DCMGAN(learning_rate_G=learning_rate_G,
+dcgan = Second_Step_GAN(learning_rate_G=learning_rate_G,
                 learning_rate_D=learning_rate_D,
                 batch_size=batch_size,
                 nc = nc,
@@ -190,7 +191,8 @@ dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 dataset='mnist',
                 condtional=True)
 
-
+# dcgan.generator.summary()
+# dcgan.discriminator.summary()
 
 
 D_losses = []

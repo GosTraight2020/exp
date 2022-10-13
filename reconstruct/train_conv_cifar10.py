@@ -43,7 +43,7 @@ def normal_func(X, y, image_size, nc):
      y = y.astype(np.float32) 
      return X, y
 
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc, noise_shape=100)
 
 def train_generator(x, y, z, eps, dcgan):
 
@@ -87,18 +87,21 @@ G_losses = []
 
 for epoch in range(epoch_num):
     num = 0
+    G_temp_loss = []
+    D_temp_loss = []
     for((z, y), (x, eps)) in dataset:
         fake_x, loss_G= train_generator(x, y, z, eps, dcgan)
         
         for i in range(5):
             loss_D= train_discriminator(x, y, z, eps, dcgan)
         num+=1
-
+        G_temp_loss.append(loss_G)
+        D_temp_loss.append(loss_D)
         print("[INFO] epoch: {}, {}/{},  G_loss : {}, D_loss: {}".format(epoch, num, len(X_train)//batch_size, loss_G, loss_D))
 
         
-    G_losses.append(loss_G)
-    D_losses.append(loss_D)
+    G_losses.append(np.mean(G_temp_loss))
+    D_losses.append(np.mean(D_temp_loss))
 
     if epoch % 5 == 0:
         samples = generate_samples(dcgan)

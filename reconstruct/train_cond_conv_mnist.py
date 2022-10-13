@@ -7,7 +7,6 @@ from utils import generate_GAN_inputs, plot_sample_images, lrelu, debug, compute
 from utils import eucl_dist_output_shape, euclidean_distance, contrastive_loss, cosin_distance
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.losses import mean_squared_error
-from sklearn.metrics import mutual_info_score
 from tensorflow.keras import backend as K
 import tensorflow as tf
 import numpy as np
@@ -16,15 +15,7 @@ import matplotlib.pyplot as plt
 import os 
 
 
-def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None, template_samples=None, data_set=None):
-    # 如果参数template_samples不为空，说明需要按照输入的模版样本来引导样本生成
-    if template_samples is not None:
-        templates = np.array(x)
-        y_templates = np.argmax(y, axis=1)
-        for i in range(10):
-            templates[y_templates==i] = template_samples[i]
-    else:
-        templates = x
+def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None, data_set=None):
             
     with tf.GradientTape(persistent=True) as t:
         fake_x = dcgan.generator([z, y])
@@ -33,14 +24,14 @@ def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None, template
         if loss == 'origin':
             aux_loss = 0
         elif loss == 'mse':
-            aux_loss = mean_squared_error(templates, fake_x)
+            aux_loss = mean_squared_error(x, fake_x)
             aux_loss = 10 * tf.reduce_mean(aux_loss)
         elif loss == 'siamese':
             if data_set == "fashion_mnist":
                 fake_x = tf.reshape(fake_x, (-1, 28, 28, 1))
-                templates = tf.reshape(templates, (-1, 28, 28, 1))
+                templates = tf.reshape(x, (-1, 28, 28, 1))
             v1 = siamese_model(fake_x)
-            v2 = siamese_model(templates)
+            v2 = siamese_model(x)
             test_distance = Lambda(euclidean_distance,
                                     output_shape=eucl_dist_output_shape)([v1, v2])
             aux_loss = tf.reduce_mean(test_distance)
@@ -49,14 +40,8 @@ def train_generator(x, y, z, eps, dcgan, loss=None, siamese_model=None, template
             aux_loss = K.categorical_crossentropy(y, preds)
             aux_loss = tf.reduce_mean(aux_loss)
         elif loss == 'cosin_distance':
-            aux_loss = cosin_distance(templates, fake_x)
+            aux_loss = cosin_distance(x, fake_x)
             aux_loss = -tf.reduce_mean(aux_loss)
-        elif loss == 'mutual_info':
-            aux_loss = compute_score(templates, fake_x, 'mutual_info_score')
-            aux_loss = -tf.reduce_mean(aux_loss)
-        elif loss == 'ssim':
-            aux_loss = compute_score(templates, fake_x, 'ssim_socre')
-            aux_loss = tf.reduce_mean(aux_loss)
         else:
             raise ValueError("[Error] Wrong value of loss!")
 
@@ -79,7 +64,6 @@ def train_discriminator(x, y, z, eps, dcgan):
         grad_pen = 10* tf.reduce_mean(tf.nn.relu(grad_norm-1.))
 
         loss_D = tf.reduce_mean(dcgan.discriminator(fake_x)) - tf.reduce_mean(dcgan.discriminator(x)) + grad_pen
-       
         gradient_d = t.gradient(loss_D, dcgan.discriminator.trainable_variables)
 
     dcgan.optimizer_D.apply_gradients(zip(gradient_d, dcgan.discriminator.trainable_variables))
@@ -149,7 +133,6 @@ learning_rate_G = 1e-4
 
 epoch_num = 100
 loss = 'siamese'
-enable_template = False
 
 pic_dir = './pic/conv_mnist'
 chart_dir = './chart/conv_mnist'
@@ -169,13 +152,8 @@ elif loss == 'categorical_crossentropy':
 else:
     aux_model = None
 
-if enable_template == True:
-    template_samples = generate_templates(X_train, y_train)
-else:
-    template_samples = None
 
-
-dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc)
+dataset = generate_GAN_inputs(X_train, y_train, batch_size=batch_size, normal_func=normal_func, image_size=image_size, nc=nc, noise_shape=100)
 
 dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 learning_rate_D=learning_rate_D,
@@ -191,8 +169,6 @@ dcgan = DCMGAN(learning_rate_G=learning_rate_G,
                 condtional=True)
 
 
-
-
 D_losses = []
 G_losses = []
 for epoch in range(epoch_num):
@@ -200,7 +176,7 @@ for epoch in range(epoch_num):
     G_temp_loss = []
     D_temp_loss = []
     for((z, y), (x, eps)) in dataset:
-        fake_x, loss_G, axu_loss, loss= train_generator(x, y, z, eps, dcgan, loss, aux_model, template_samples, data_set)     
+        fake_x, loss_G, axu_loss, loss= train_generator(x, y, z, eps, dcgan, loss, aux_model, data_set)     
         for i in range(5):
             loss_D = train_discriminator(x, y, z, eps, dcgan)
         num += 1
@@ -212,15 +188,15 @@ for epoch in range(epoch_num):
 
     if epoch % 5 == 0:
         cond_samples = generate_conditional_sample(dcgan.generator)
-        plot_sample_images(cond_samples, epoch=epoch, tag="{}_{}_{}".format(data_set, loss, enable_template), size=(-1, image_size, image_size, nc), dir=pic_dir)
+        plot_sample_images(cond_samples, epoch=epoch, tag="{}_{}".format(data_set, loss), size=(-1, image_size, image_size, nc), dir=pic_dir)
 
         plt.plot(np.arange(epoch+1), G_losses)
         plt.plot(np.arange(epoch+1), D_losses)
         plt.legend()
-        plt.savefig(os.path.join(chart_dir, 'conditional_{}_{}_loss_batch_256_template{}.png'.format(loss, data_set, enable_template)))
+        plt.savefig(os.path.join(chart_dir, 'conditional_{}_{}_loss_batch_256.png'.format(loss, data_set)))
 
     
-file1 = open("./data/mnist_{}_{}_template_{}.log".format(loss, data_set, enable_template), 'w')
+file1 = open("./data/mnist_{}_{}.log".format(loss, data_set), 'w')
 file1.write("G_loss: \n")
 file1.write(str(G_losses))
 file1.write('\n')
@@ -228,4 +204,4 @@ file1.write("D_loss:\n")
 file1.write(str(D_losses))
 file1.close()
 
-dcgan.generator.save("./model/mnist_{}_{}_template_{}.h5".format(loss, data_set, enable_template))
+dcgan.generator.save("./model/mnist_{}_{}_template_{}.h5".format(loss, data_set))
