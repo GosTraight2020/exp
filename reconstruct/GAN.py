@@ -1,8 +1,10 @@
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Input, Dense, Activation, BatchNormalization, Reshape, UpSampling2D, Conv2D, MaxPooling2D
-from tensorflow.keras.layers import Flatten, Conv2DTranspose, LeakyReLU, Concatenate,Embedding
+from tensorflow.keras.layers import Flatten, Conv2DTranspose, LeakyReLU, Concatenate,Embedding, Dropout
+from tensorflow.keras.optimizers import RMSprop
 from tensorflow.keras.initializers import RandomNormal
+
 class MGAN:
     def __init__(self,
                  model_shape_G=None,
@@ -227,16 +229,21 @@ class DCMGAN:
         return Model(inputs=inputs, outputs=outputs)
 
 
-class New_GAN:
+class face_GAN:
     def __init__(self,
-                learning_rate_G=None,
-                learning_rate_D=None,
-                batch_size=None,
-                nc = None,
-                nz = None,
-                image_size = None,
-                dataset=None,
-                condtional=False):
+                 learning_rate_G=None,
+                 learning_rate_D=None,
+                 batch_size=None,
+                 nc = None,
+                 nz = None,
+                 ngf = None,
+                 ndf = None,
+                 n_extra_layers = None,
+                 Diters = None,
+                 image_size = None,
+                 dataset=None,
+                 condtional=False,
+                 step=None):
 
         self.learning_rate_G = learning_rate_G
         self.learning_rate_D = learning_rate_D
@@ -245,114 +252,110 @@ class New_GAN:
         self.optimizer_D = tf.train.AdamOptimizer(learning_rate_D, 0.5)
         self.nc = nc
         self.nz = nz
+        self.ngf = ngf
+        self.ndf = ndf
+        self.n_extra_layers = n_extra_layers
+        self.Diters = Diters
         self.image_size = image_size
+        self.para = 7 if dataset is 'mnist' else 5
         self.condtional = condtional
-        self.generator = self.build_generator()
-        self.discriminator = self.build_discriminator()
+        self.step = step
+        # 打印模型信息
+        print("[INFO] Creating Model:\n \
+                learning_rate_G is : {}, \n \
+                learning_rate_D is : {}, \n \
+                batch_size is : {}, \n \
+                nc is : {}, \n \
+                nz is : {}, \n \
+                ngf is : {}, \n \
+                ndf is : {}, \n \
+                n_extra_layers is : {}, \n \
+                image_size is : {}".format(self.learning_rate_G, self.learning_rate_D, self.batch_size, self.nc, self.nz, self.ngf, self.ndf, self.n_extra_layers, self.image_size))
 
-    def build_generator(self):
-        conv_init = RandomNormal(0, 0.02)
-        gamma_init = RandomNormal(1., 0.02)
-        input1 = Input(shape=(100,))
-        if self.condtional:
-            input2 = Input(shape=(10,))
-            _ = Concatenate(axis=-1)([input1, input2])
-            _ = Reshape((1, 1, self.nz+10))(_)
-        else:
-            _ = Reshape((1, 1, self.nz))(input1)
-        _ = Conv2DTranspose(filters=256, kernel_size=4, strides=2, use_bias=False, 
-                            kernel_initializer = conv_init, padding='same')(_)
-        _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5)(_, training=1)
-        _ = Activation("relu")(_)
-        _ = Conv2DTranspose(filters=128, kernel_size=4, strides=2, use_bias=False, padding='same',
-                            kernel_initializer = conv_init, )(_)
-        _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5)(_, training=1)
-        _ = Activation("relu")(_)
-        _ = Conv2DTranspose(filters=64, kernel_size=4, strides=2, use_bias=False, padding='same',
-                            kernel_initializer = conv_init, )(_)
-        _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5)(_, training=1)
-        _ = Activation("relu")(_)
-        _ = Conv2DTranspose(filters=32, kernel_size=4, strides=2, use_bias=False, padding='same',
-                            kernel_initializer = conv_init, )(_)
-        _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5)(_, training=1)
-        _ = Activation("relu")(_)
-        _ = Conv2DTranspose(filters=16, kernel_size=4, strides=2, use_bias=False, padding='same',
-                            kernel_initializer = conv_init, )(_)
-        _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5)(_, training=1)
-        _ = Activation("relu")(_)
-        _ = Conv2DTranspose(filters=8, kernel_size=4, strides=1, use_bias=False, padding='same',
-                            kernel_initializer = conv_init, )(_)
-        _ = BatchNormalization(gamma_initializer = gamma_init, momentum=0.9, axis=-1, epsilon=1.01e-5)(_, training=1)
-        _ = Activation("relu")(_)
-        _ = Conv2DTranspose(filters=3, kernel_size=4, strides=1, use_bias=False, padding='same',
-                            kernel_initializer = conv_init, )(_)
-        _ = Activation("tanh")(_)
+        self.generator = self.build_generator(self.image_size, self.nz, self.nc, self.ngf, self.n_extra_layers)
+        self.discriminator = self.build_discriminator(self.image_size, self.nz, self.nc, self.ndf, self.n_extra_layers)
+        
+    def build_generator(self, isize, nz, nc, ngf, n_extra_layers=0):
+        gen_input = Input(shape=(nz, ))
 
-        outputs = Reshape((self.image_size*self.image_size*self.nc,))(_)
-        if self.condtional:
-            model = Model([input1, input2], outputs)
-        else:
-            model = Model(input1, outputs)
-        return model 
+        x = Dense(1024 * 4 * 4, activation='relu')(gen_input)
+        x = Reshape((4, 4, 1024))(x)
+
+        x = Conv2DTranspose(512, 5, strides=2, padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x) 
+
+        x = Conv2DTranspose(256, 5, strides=2, padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x) 
+
+        x = Conv2DTranspose(128, 5, strides=2, padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x) 
+
+        x = Conv2DTranspose(64, 5, strides=2, padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Activation('relu')(x) 
+
+        x = Conv2DTranspose(3, 5, strides=2, padding='same', activation='tanh')(x)
+
+        # x = Conv2D(512, 5, padding='same')(x)
+        # x = LeakyReLU()(x)
+        # x = Conv2D(512, 5, padding='same')(x)
+        # x = LeakyReLU()(x)
+        # x = Conv2D(3, 7, activation='relu', padding='same')(x)
+        x = Flatten()(x)
+
+        generator = Model(gen_input, x)
+        return generator
+
+
+    def build_discriminator(self, isize, nz, nc, ndf, n_extra_layers=0):
+        print("discriminator:{}, {}, {}, {}, {}".format(isize, nz, nc, ndf, n_extra_layers))
+
+        print('[INFO] Constructing discriminator model...')
+        disc_input = Input(shape=(128*128*3,))
+
+        x = Reshape((128, 128, 3))(disc_input)
+
+        x = Conv2D(64, 5, strides=2, padding='same')(x)
+        x = LeakyReLU()(x)
+
+        x = Conv2D(128, 5, strides=2, padding='same')(x)
+        x = LeakyReLU()(x)
+
+        x = Conv2D(256, 5, strides=2, padding='same')(x)
+        x = LeakyReLU()(x)
+
+        x = Conv2D(512, 5, strides=2, padding='same')(x)
+        x = LeakyReLU()(x)
+
+        x = Conv2D(1024, 5, strides=2, padding='same')(x)
+        x = LeakyReLU()(x)
+
+        x = Flatten()(x)
+        x = Dense(1, activation=None)(x)
+        discriminator = Model(disc_input, x)
+
+
+        return discriminator
+
+
+
     
-    def build_discriminator(self):
-        conv_init = RandomNormal(0, 0.02)
-        gamma_init = RandomNormal(1., 0.02)
-        inputs = Input(shape=(self.image_size*self.image_size*self.nc,))
-        _ = Reshape((self.image_size, self.image_size, self.nc))(inputs)
-        _ = Conv2D(filters=8, kernel_size=4, strides=1, use_bias=False, padding='same',
-                            kernel_initializer = conv_init) (_)
-        _ = LeakyReLU(alpha=0.2)(_)
-        _ = BatchNormalization( momentum=0.9, axis=-1, epsilon=1.01e-5, gamma_initializer=                  gamma_init)(_, training=1)        
-        
-        _ = Conv2D(filters=16, kernel_size=4, strides=1, use_bias=False,padding = "same",
-                            kernel_initializer = conv_init,) (_)
-        _ = LeakyReLU(alpha=0.2)(_)
-        _ = BatchNormalization( momentum=0.9, axis=-1, epsilon=1.01e-5, gamma_initializer=                  gamma_init)(_, training=1)        
-        
-        _ = Conv2D(filters=32, kernel_size=4, strides=1, use_bias=False,padding = "same",
-                            kernel_initializer = conv_init,) (_)
-        _ = LeakyReLU(alpha=0.2)(_)
-        _ = BatchNormalization( momentum=0.9, axis=-1, epsilon=1.01e-5, gamma_initializer=                  gamma_init)(_, training=1)        
-        
-        _ = Conv2D(filters=64, kernel_size=4, strides=2, use_bias=False,padding = "same",
-                            kernel_initializer = conv_init,) (_)
-        _ = LeakyReLU(alpha=0.2)(_)
-        _ = BatchNormalization( momentum=0.9, axis=-1, epsilon=1.01e-5, gamma_initializer=                  gamma_init)(_, training=1)        
-        
-        _ = Conv2D(filters=128, kernel_size=4, strides=2, use_bias=False,padding = "same",
-                            kernel_initializer = conv_init,) (_)
-        _ = LeakyReLU(alpha=0.2)(_)
-        _ = BatchNormalization( momentum=0.9, axis=-1, epsilon=1.01e-5, gamma_initializer=                  gamma_init)(_, training=1)        
-        
-        # _ = Conv2D(filters=256, kernel_size=4, strides=2, use_bias=False,padding = "same",
-        #                     kernel_initializer = conv_init,) (_)
-        # _ = LeakyReLU(alpha=0.2)(_)
-        # _ = BatchNormalization( momentum=0.9, axis=-1, epsilon=1.01e-5, gamma_initializer=                  gamma_init)(_, training=1)        
-        
- 
-        _ = Conv2D(filters=1, kernel_size=4, strides=2, use_bias=False,
-                            kernel_initializer = conv_init,) (_)
-        
-        outputs = Flatten()(_)
-        
-        model = Model(inputs, outputs)
-        return model
-
-        
-# nc = 1
-# nz = 100
+# nc = 3
+# nz = 32
 # ngf = 64
 # ndf = 64
 # n_extra_layers = 0
 # Diters = 5
 
-# image_size = 28
-# batch_size = 64
+# image_size = 128
+# batch_size = 32
 # learning_rate_D = 1e-4
 # learning_rate_G = 1e-4
 
-# dcgan = Second_Step_GAN(learning_rate_G=learning_rate_G,
+# dcgan = face_GAN(learning_rate_G=learning_rate_G,
 #                 learning_rate_D=learning_rate_D,
 #                 batch_size=batch_size,
 #                 nc = nc,
@@ -362,7 +365,7 @@ class New_GAN:
 #                 n_extra_layers = n_extra_layers,
 #                 Diters = Diters,
 #                 image_size = image_size,
-#                 dataset='mnist',
+#                 dataset='cifar10',
 #                 condtional = True)
 # dcgan.discriminator.summary()
 # dcgan.generator.summary()

@@ -21,7 +21,7 @@ n_extra_layers = 0
 Diters = 5
 
 image_size = 32
-batch_size = 64
+batch_size = 128
 learning_rate_D = 1e-4
 learning_rate_G = 1e-4
 
